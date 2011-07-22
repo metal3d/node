@@ -21,66 +21,65 @@
 
 var common = require('../common');
 var assert = require('assert');
-var fs = require('fs');
-var http = require('http');
+var net = require('net');
 
-var status_ok  = false; // status code == 200?
-var headers_ok = false;
-var body_ok    = false;
+function test(clazz, cb) {
+  var have_ping = false;
+  var have_pong = false;
 
-var server = http.createServer(function(req, res) {
-  res.writeHead(200, {'Content-Type': 'text/plain',
-                      'Connection': 'close'
-                     });
-  res.write('hello ');
-  res.write('world\n');
-  res.end();
-});
+  function check() {
+    assert.ok(have_ping);
+    assert.ok(have_pong);
+  }
 
-server.listen(common.PIPE, function() {
+  function ping() {
+    var conn = new clazz();
 
-  var options = {
-    socketPath: common.PIPE,
-    path: '/'
-  };
-
-  var req = http.get(options, function(res) {
-    assert.equal(res.statusCode, 200);
-    status_ok = true;
-
-    assert.equal(res.headers['content-type'], 'text/plain');
-    headers_ok = true;
-
-    res.body = '';
-    res.setEncoding('utf8');
-
-    res.on('data', function (chunk) {
-      res.body += chunk;
+    conn.on('error', function(err) {
+      throw err;
     });
 
-    res.on('end', function() {
-      assert.equal(res.body, 'hello world\n');
-      body_ok = true;
+    conn.connect(common.PIPE, function() {
+      conn.write('PING', 'utf-8');
+    });
+
+    conn.on('data', function(data) {
+      assert.equal(data.toString(), 'PONG')
+      have_pong = true;
+      conn.destroy();
+    });
+  }
+
+  function pong(conn) {
+    conn.on('error', function(err) {
+      throw err;
+    });
+
+    conn.on('data', function(data) {
+      assert.equal(data.toString(), 'PING')
+      have_ping = true;
+      conn.write('PONG', 'utf-8');
+    });
+
+    conn.on('close', function() {
       server.close();
     });
-  });
+  }
 
-  req.on('error', function(e) {
-    console.log(e.stack);
-    process.exit(1);
-  });
-
-  req.end();
-
-});
-
-process.on('exit', function() {
-  assert.ok(status_ok);
-  assert.ok(headers_ok);
-  assert.ok(body_ok);
-
-  // Double close should throw. Follows net_legacy behaviour.
-  assert.throws(function() {
+  var timeout = setTimeout(function() {
     server.close();
+  }, 2000);
+
+  var server = net.Server();
+  server.listen(common.PIPE, ping);
+  server.on('connection', pong);
+  server.on('close', function() {
+    clearTimeout(timeout);
+    check();
+    cb && cb();
   });
+}
+
+test(net.Stream, function() {
+  test(net.Socket);
 });

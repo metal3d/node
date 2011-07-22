@@ -144,6 +144,7 @@ UVTEST += simple/test-http-write-empty-string
 UVTEST += simple/test-http-wget
 UVTEST += simple/test-mkdir-rmdir
 UVTEST += simple/test-net-binary
+UVTEST += simple/test-net-pingpong
 UVTEST += simple/test-net-can-reset-timeout
 UVTEST += simple/test-net-connect-buffer
 UVTEST += simple/test-net-connect-timeout
@@ -166,6 +167,7 @@ UVTEST += simple/test-next-tick-ordering
 UVTEST += simple/test-next-tick-ordering2
 UVTEST += simple/test-next-tick-starvation
 UVTEST += simple/test-path
+UVTEST += simple/test-pipe-stream
 UVTEST += simple/test-pump-file2tcp
 UVTEST += simple/test-pump-file2tcp-noexist
 UVTEST += simple/test-punycode
@@ -218,6 +220,18 @@ UVTEST += pummel/test-timer-wrap
 UVTEST += pummel/test-timer-wrap2
 UVTEST += pummel/test-vm-memleak
 UVTEST += internet/test-dns
+UVTEST += simple/test-tls-client-abort
+UVTEST += simple/test-tls-client-verify
+UVTEST += simple/test-tls-connect
+#UVTEST += simple/test-tls-ext-key-usage # broken
+UVTEST += simple/test-tls-junk-closes-server
+UVTEST += simple/test-tls-npn-server-client
+UVTEST += simple/test-tls-request-timeout
+#UVTEST += simple/test-tls-securepair-client # broken
+#UVTEST += simple/test-tls-securepair-server # broken
+#UVTEST += simple/test-tls-server-verify # broken
+UVTEST += simple/test-tls-set-encoding
+
 
 test-uv: all
 	NODE_USE_UV=1 python tools/test.py $(UVTEST)
@@ -293,6 +307,7 @@ dist: doc
 	cp doc/node.1 $(TARNAME)/doc/node.1
 	cp -r build/doc/api $(TARNAME)/doc/api
 	rm -rf $(TARNAME)/deps/v8/test # too big
+	rm -rf $(TARNAME)/doc/logos # too big
 	tar -cf $(TARNAME).tar $(TARNAME)
 	rm -rf $(TARNAME)
 	gzip -f -9 $(TARNAME).tar
