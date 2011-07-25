@@ -19,38 +19,53 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+var common = require('../common');
+var assert = require('assert');
+var net = require('net');
 
-#include "node_config.h"
+var tcpPort = common.PORT;
+var bytesRead = 0;
+var bytesWritten = 0;
+var count = 0;
 
-#ifndef NODE_VERSION_H
-#define NODE_VERSION_H
+var tcp = net.Server(function(s) {
+  console.log('tcp server connection');
 
-#define NODE_MAJOR_VERSION 0
-#define NODE_MINOR_VERSION 5
-#define NODE_PATCH_VERSION 3
-#define NODE_VERSION_IS_RELEASE 0
+  s.on('end', function() {
+    bytesRead += s.bytesRead;
+    console.log('tcp socket disconnect #' + count);
+  });
+});
 
-#ifndef NODE_STRINGIFY
-#define NODE_STRINGIFY(n) NODE_STRINGIFY_HELPER(n)
-#define NODE_STRINGIFY_HELPER(n) #n
-#endif
+tcp.listen(common.PORT, function () {
+  var socket = net.createConnection(tcpPort);
 
-#if NODE_VERSION_IS_RELEASE
-# define NODE_VERSION_STRING  NODE_STRINGIFY(NODE_MAJOR_VERSION) "." \
-                              NODE_STRINGIFY(NODE_MINOR_VERSION) "." \
-                              NODE_STRINGIFY(NODE_PATCH_VERSION)
-#else
-# define NODE_VERSION_STRING  NODE_STRINGIFY(NODE_MAJOR_VERSION) "." \
-                              NODE_STRINGIFY(NODE_MINOR_VERSION) "." \
-                              NODE_STRINGIFY(NODE_PATCH_VERSION) "-pre"
-#endif
+  socket.on('connect', function() {
+    count++;
+    console.log('tcp client connection #' + count);
 
-#define NODE_VERSION "v" NODE_VERSION_STRING
+    socket.write('foo', function () {
+      socket.end('bar');
+    });
+  });
 
+  socket.on('end', function() {
+    bytesWritten += socket.bytesWritten;
+    console.log('tcp client disconnect #' + count);
+  });
 
-#define NODE_VERSION_AT_LEAST(major, minor, patch) \
-  (( (major) < NODE_MAJOR_VERSION) \
-  || ((major) == NODE_MAJOR_VERSION && (minor) < NODE_MINOR_VERSION) \
-  || ((major) == NODE_MAJOR_VERSION && (minor) == NODE_MINOR_VERSION && (patch) <= NODE_PATCH_VERSION))
+  socket.on('close', function() {
+    console.log('Bytes read: ' + bytesRead);
+    console.log('Bytes written: ' + bytesWritten);
+    if (count < 2) {
+      socket.connect(tcpPort);
+    } else {
+      tcp.close();
+    };
+  });
+});
 
-#endif /* NODE_VERSION_H */
+process.on('exit', function () {
+  assert.equal(bytesRead, 12);
+  assert.equal(bytesWritten, 12);
+});
