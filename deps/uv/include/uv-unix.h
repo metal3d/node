@@ -87,7 +87,7 @@ typedef struct {
 #define UV_PIPE_PRIVATE_TYPEDEF
 #define UV_PIPE_PRIVATE_FIELDS \
   UV_TCP_PRIVATE_FIELDS \
-  const char* pipe_fname; /* strdup'ed */ \
+  const char* pipe_fname; /* strdup'ed */
 
 
 /* UV_PREPARE */ \

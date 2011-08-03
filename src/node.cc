@@ -41,7 +41,6 @@
 
 #ifdef __MINGW32__
 # include <platform_win32.h> /* winapi_perror() */
-# include <platform_win32_winsock.h> /* wsa_init() */
 # ifdef PTW32_STATIC_LIB
 extern "C" {
   BOOL __cdecl pthread_win32_process_attach_np (void);
@@ -140,7 +139,19 @@ static bool use_uv = true;
 #endif
 
 // disabled by default for now
-static bool use_http2 = false;
+static bool use_http1 = false;
+
+#ifdef OPENSSL_NPN_NEGOTIATED
+static bool use_npn = true;
+#else
+static bool use_npn = false;
+#endif
+
+#ifdef SSL_CTRL_SET_TLSEXT_SERVERNAME_CB
+static bool use_sni = true;
+#else
+static bool use_sni = false;
+#endif
 
 // Buffer for getpwnam_r(), getgrpam_r() and other misc callers; keep this
 // scoped at file-level rather than method-level to avoid excess stack usage.
@@ -1304,7 +1315,7 @@ void DisplayExceptionLine (TryCatch &try_catch) {
     //
     // When reporting errors on the first line of a script, this wrapper
     // function is leaked to the user. This HACK is to remove it. The length
-    // of the wrapper is 70. That wrapper is defined in src/node.js
+    // of the wrapper is 62. That wrapper is defined in src/node.js
     //
     // If that wrapper is ever changed, then this number also has to be
     // updated. Or - someone could clean this up so that the two peices
@@ -1312,7 +1323,7 @@ void DisplayExceptionLine (TryCatch &try_catch) {
     //
     // Even better would be to get support into V8 for wrappers that
     // shouldn't be reported to users.
-    int offset = linenum == 1 ? 70 : 0;
+    int offset = linenum == 1 ? 62 : 0;
 
     fprintf(stderr, "%s\n", sourceline_string + offset);
     // Print wavy underline (GetUnderline is deprecated).
@@ -1860,6 +1871,7 @@ static void DebugBreakMessageHandler(const Debug::Message& message) {
 
 
 Persistent<Object> binding_cache;
+Persistent<Array> module_load_list;
 
 static Handle<Value> Binding(const Arguments& args) {
   HandleScope scope;
@@ -1876,8 +1888,16 @@ static Handle<Value> Binding(const Arguments& args) {
 
   if (binding_cache->Has(module)) {
     exports = binding_cache->Get(module)->ToObject();
+    return scope.Close(exports);
+  }
 
-  } else if ((modp = get_builtin_module(*module_v)) != NULL) {
+  // Append a string to process.moduleLoadList
+  char buf[1024];
+  snprintf(buf, 1024, "Binding %s", *module_v);
+  uint32_t l = module_load_list->Length();
+  module_load_list->Set(l, String::New(buf));
+
+  if ((modp = get_builtin_module(*module_v)) != NULL) {
     exports = Object::New();
     modp->register_func(exports);
     binding_cache->Set(module, exports);
@@ -2020,8 +2040,10 @@ static Handle<Object> GetFeatures() {
 
   Local<Object> obj = Object::New();
   obj->Set(String::NewSymbol("uv"), Boolean::New(use_uv));
-  obj->Set(String::NewSymbol("http2"), Boolean::New(use_http2));
+  obj->Set(String::NewSymbol("http1"), Boolean::New(use_http1));
   obj->Set(String::NewSymbol("ipv6"), True()); // TODO ping libuv
+  obj->Set(String::NewSymbol("tls_npn"), Boolean::New(use_npn));
+  obj->Set(String::NewSymbol("tls_sni"), Boolean::New(use_sni));
   obj->Set(String::NewSymbol("tls"),
       Boolean::New(get_builtin_module("crypto") != NULL));
 
@@ -2048,6 +2070,10 @@ Handle<Object> SetupProcessObject(int argc, char *argv[]) {
 
   // process.installPrefix
   process->Set(String::NewSymbol("installPrefix"), String::New(NODE_PREFIX));
+
+  // process.moduleLoadList
+  module_load_list = Persistent<Array>::New(Array::New());
+  process->Set(String::NewSymbol("moduleLoadList"), module_load_list);
 
   Local<Object> versions = Object::New();
   char buf[20];
@@ -2259,7 +2285,7 @@ static void PrintHelp() {
          "  --vars               print various compiled-in variables\n"
          "  --max-stack-size=val set max v8 stack size (bytes)\n"
          "  --use-uv             use the libuv backend\n"
-         "  --use-http2          use the new and improved http library\n"
+         "  --use-http1          use the legacy http library\n"
          "\n"
          "Enviromental variables:\n"
          "NODE_PATH              ':'-separated list of directories\n"
@@ -2284,8 +2310,8 @@ static void ParseArgs(int argc, char **argv) {
     } else if (!strcmp(arg, "--use-uv")) {
       use_uv = true;
       argv[i] = const_cast<char*>("");
-    } else if (!strcmp(arg, "--use-http2")) {
-      use_http2 = true;
+    } else if (!strcmp(arg, "--use-http1")) {
+      use_http1 = true;
       argv[i] = const_cast<char*>("");
     } else if (strcmp(arg, "--version") == 0 || strcmp(arg, "-v") == 0) {
       printf("%s\n", NODE_VERSION);
@@ -2343,19 +2369,20 @@ static void EnableDebug(bool wait_connect) {
 static volatile bool hit_signal;
 
 
-static void EnableDebugSignalHandler(int signal) {
-  // This is signal safe.
-  hit_signal = true;
-  v8::Debug::DebugBreak();
-}
-
-
 static void DebugSignalCB(const Debug::EventDetails& details) {
   if (hit_signal && details.GetEvent() == v8::Break) {
     hit_signal = false;
     fprintf(stderr, "Hit SIGUSR1 - starting debugger agent.\n");
     EnableDebug(false);
   }
+}
+
+
+static void EnableDebugSignalHandler(int signal) {
+  // This is signal safe.
+  hit_signal = true;
+  v8::Debug::SetDebugEventListener2(DebugSignalCB);
+  v8::Debug::DebugBreak();
 }
 
 
@@ -2416,11 +2443,6 @@ char** Init(int argc, char *argv[]) {
   RegisterSignalHandler(SIGTERM, SignalExit);
 #endif // __POSIX__
 
-#ifdef __MINGW32__
-  // Initialize winsock and soem related caches
-  wsa_init();
-#endif // __MINGW32__
-
   uv_prepare_init(&node::prepare_tick_watcher);
   uv_prepare_start(&node::prepare_tick_watcher, PrepareTick);
   uv_unref();
@@ -2480,7 +2502,6 @@ char** Init(int argc, char *argv[]) {
   } else {
 #ifdef __POSIX__
     RegisterSignalHandler(SIGUSR1, EnableDebugSignalHandler);
-    Debug::SetDebugEventListener2(DebugSignalCB);
 #endif // __POSIX__
   }
 

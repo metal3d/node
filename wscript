@@ -868,11 +868,11 @@ def build(bld):
     src/pipe_wrap.cc
     src/cares_wrap.cc
     src/stdio_wrap.cc
+    src/process_wrap.cc
   """
 
   if sys.platform.startswith("win32"):
     node.source += " src/node_stdio_win32.cc "
-    node.source += " src/node_child_process_win32.cc "
   else:
     node.source += " src/node_cares.cc "
     node.source += " src/node_net.cc "
@@ -955,14 +955,6 @@ def build(bld):
   bld.install_files('${PREFIX}/bin/', 'tools/node-waf', chmod=0755)
   bld.install_files('${LIBDIR}/node/wafadmin', 'tools/wafadmin/*.py')
   bld.install_files('${LIBDIR}/node/wafadmin/Tools', 'tools/wafadmin/Tools/*.py')
-
-  # create a pkg-config(1) file
-  node_conf = bld.new_task_gen('subst', before="cxx")
-  node_conf.source = 'tools/nodejs.pc.in'
-  node_conf.target = 'tools/nodejs.pc'
-  node_conf.dict = subflags(node)
-
-  bld.install_files('${LIBDIR}/pkgconfig', 'tools/nodejs.pc')
 
 def shutdown():
   Options.options.debug

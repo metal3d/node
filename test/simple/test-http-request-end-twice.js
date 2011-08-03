@@ -19,28 +19,20 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-#ifndef NODE_PLATFORM_WIN32_WINSOCK_H_
-#define NODE_PLATFORM_WIN32_WINSOCK_H_
+var common = require('../common');
+var assert = require('assert');
+var http = require('http');
 
-#include <platform_win32.h>
+var server = http.Server(function(req, res) {
+  res.writeHead(200, {'Content-Type': 'text/plain'});
+  res.end("hello world\n");
+});
+server.listen(common.PORT, function() {
+  var req = http.get({port: common.PORT}, function(res) {
+    res.on('end', function() {
+      assert.ok(!req.end());
+      server.close();
+    });
+  });
+});
 
-#include <winsock2.h>
-#include <mswsock.h>
-#include <ws2tcpip.h>
-#include <ws2spi.h>
-
-namespace node {
-
-void wsa_init();
-
-void wsa_perror(const char* prefix = "");
-
-SOCKET wsa_sync_socket(int af, int type, int proto);
-
-int wsa_socketpair(int af, int type, int proto, SOCKET sock[2]);
-int wsa_sync_async_socketpair(int af, int type, int proto, SOCKET *syncSocket, SOCKET *asyncSocket);
-
-
-} // namespace node
-
-#endif  // NODE_PLATFORM_WIN32_WINSOCK_H_

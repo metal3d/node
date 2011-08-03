@@ -159,10 +159,7 @@ typedef enum {
   UV_WRITE,
   UV_SHUTDOWN,
   UV_WAKEUP,
-  /* TODO: remove the req suffix */
-  UV_ARES_EVENT_REQ,
-  UV_ARES_CLEANUP_REQ,
-  UV_GETADDRINFO_REQ
+  UV_REQ_TYPE_PRIVATE
 } uv_req_type;
 
 
@@ -508,9 +505,8 @@ typedef struct uv_process_options_s {
   char** env;
   char* cwd;
   /*
-   * The user should supply pointers to uninitialized uv_pipe_t structs for
-   * stdio. They will be initialized by uv_spawn. The user is reponsible for
-   * calling uv_close on them.
+   * The user should supply pointers to initialized uv_pipe_t structs for
+   * stdio. The user is reponsible for calling uv_close on them.
    */
   uv_pipe_t* stdin_stream;
   uv_pipe_t* stdout_stream;
@@ -621,6 +617,7 @@ uv_counters_t* uv_counters();
 
 
 /* Don't export the private CPP symbols. */
+#undef UV_REQ_TYPE_PRIVATE
 #undef UV_REQ_PRIVATE_FIELDS
 #undef UV_STREAM_PRIVATE_FIELDS
 #undef UV_TCP_PRIVATE_FIELDS
